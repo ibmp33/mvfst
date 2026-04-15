@@ -28,6 +28,8 @@ target_compile_options(
 
 target_link_libraries(
   echo PUBLIC
+  mvfst_client_client
+  mvfst_logging_file_qlogger
   mvfst_test_utils
   ${GFLAGS_LIBRARIES}
   ${LIBGMOCK_LIBRARIES}

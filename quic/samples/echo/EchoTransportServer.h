@@ -115,7 +115,7 @@ class UDPAcceptor : public folly::AsyncUDPSocket::ReadCallback {
 
 class EchoTransportServer {
  public:
-  explicit EchoTransportServer(std::string host = "::1", uint16_t port = 6666)
+  explicit EchoTransportServer(std::string host = "::1", uint16_t port = 4433)
       : host_(std::move(host)), port_(port) {}
 
   void start() {
