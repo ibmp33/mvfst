@@ -103,14 +103,17 @@ if [[ ! -z "${MVFST_FOLLY_USE_JEMALLOC-}" ]]; then
 fi
 
 # Default to parallel build width of 4.
-# If we have "nproc", use that to get a better value.
-# If not, then intentionally go a bit conservative and
-# just use the default of 4 (e.g., some desktop/laptop OSs
-# have a tendency to freeze if we actually use all cores).
+# Intentionally cap parallelism to avoid freezing laptops/desktops during
+# large C++ builds. Users can override with MVFST_BUILD_JOBS if needed.
 set +x
 nproc=4
-if [ -z "$(hash nproc 2>&1)" ]; then
-    nproc=$(nproc)
+if [[ -n "${MVFST_BUILD_JOBS-}" ]]; then
+    nproc="${MVFST_BUILD_JOBS}"
+elif command -v nproc >/dev/null 2>&1; then
+    detected_nproc=$(nproc)
+    if [[ "$detected_nproc" -lt "$nproc" ]]; then
+        nproc="$detected_nproc"
+    fi
 fi
 set -x
 
@@ -197,7 +200,8 @@ function setup_fmt() {
 function setup_googletest() {
   GTEST_DIR=$DEPS_DIR/googletest
   GTEST_BUILD_DIR=$DEPS_DIR/googletest/build/
-  GTEST_TAG=$(grep "subdir = " ../build/fbcode_builder/manifests/googletest | cut -d "-" -f 2,3)
+  GTEST_TAG=$(sed -n 's|^url = .*/tags/\(.*\)\.tar\.gz$|\1|p' \
+    ../build/fbcode_builder/manifests/googletest)
   if [ ! -d "$GTEST_DIR" ] ; then
     echo -e "${COLOR_GREEN}[ INFO ] Cloning googletest repo ${COLOR_OFF}"
     git clone https://github.com/google/googletest.git  "$GTEST_DIR"
@@ -217,6 +221,36 @@ function setup_googletest() {
   make -j "$nproc"
   make install
   echo -e "${COLOR_GREEN}googletest is installed ${COLOR_OFF}"
+  cd "$BWD" || exit
+}
+
+function setup_fast_float() {
+  FASTFLOAT_DIR=$DEPS_DIR/fast_float
+  FASTFLOAT_BUILD_DIR=$DEPS_DIR/fast_float/build/
+  FASTFLOAT_TAG=$(sed -n 's|^url = .*/tags/\(.*\)\.tar\.gz$|\1|p' \
+    ../build/fbcode_builder/manifests/fast_float)
+  if [ ! -d "$FASTFLOAT_DIR" ] ; then
+    echo -e "${COLOR_GREEN}[ INFO ] Cloning fast_float repo ${COLOR_OFF}"
+    git clone https://github.com/fastfloat/fast_float.git "$FASTFLOAT_DIR"
+  fi
+  cd "$FASTFLOAT_DIR"
+  git fetch --tags
+  git checkout "${FASTFLOAT_TAG}"
+  echo -e "${COLOR_GREEN}Building fast_float ${COLOR_OFF}"
+  mkdir -p "$FASTFLOAT_BUILD_DIR"
+  cd "$FASTFLOAT_BUILD_DIR" || exit
+
+  cmake                                             \
+    -DCMAKE_PREFIX_PATH="$DEPS_DIR"                 \
+    -DCMAKE_INSTALL_PREFIX="$DEPS_DIR"              \
+    -DCMAKE_BUILD_TYPE=RelWithDebInfo               \
+    -DFASTFLOAT_TEST=OFF                            \
+    -DFASTFLOAT_SANITIZE=OFF                        \
+    ${CMAKE_EXTRA_ARGS[@]+"${CMAKE_EXTRA_ARGS[@]}"} \
+    ..
+  make -j "$nproc"
+  make install
+  echo -e "${COLOR_GREEN}fast_float is installed ${COLOR_OFF}"
   cd "$BWD" || exit
 }
 
@@ -328,6 +362,7 @@ function setup_fizz() {
   cd "$FIZZ_BUILD_DIR" || exit
   cmake -DCMAKE_BUILD_TYPE=RelWithDebInfo           \
     -DBUILD_TESTS=OFF                               \
+    -DBUILD_EXAMPLES=OFF                            \
     -DCMAKE_PREFIX_PATH="$FIZZ_INSTALL_DIR"         \
     -DCMAKE_INSTALL_PREFIX="$FIZZ_INSTALL_DIR"      \
     ${CMAKE_EXTRA_ARGS[@]+"${CMAKE_EXTRA_ARGS[@]}"} \
@@ -363,6 +398,7 @@ function setup_rust() {
 detect_platform
 setup_fmt
 setup_googletest
+setup_fast_float
 setup_zstd
 setup_folly
 setup_fizz
